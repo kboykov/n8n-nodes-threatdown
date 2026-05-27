@@ -4,8 +4,17 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
-const specPath = path.join(rootDir, 'openapi', 'MalwareBytes.json');
+const specPathCandidates = [
+	path.join(rootDir, 'openapi', 'MalwareBytes.json'),
+	path.join(rootDir, 'MalwareBytes.json'),
+	path.join(rootDir, '..', 'MalwareBytes.json'),
+];
+const specPath = specPathCandidates.find((candidate) => fs.existsSync(candidate));
 const outputPath = path.join(rootDir, 'nodes', 'Threatdown', 'operations.ts');
+
+if (specPath === undefined) {
+	throw new Error(`Could not find MalwareBytes.json in: ${specPathCandidates.join(', ')}`);
+}
 
 const spec = JSON.parse(fs.readFileSync(specPath, 'utf8'));
 const httpMethods = new Set(['get', 'post', 'put', 'patch', 'delete']);
@@ -94,6 +103,17 @@ function getBodyExample(parameters, operation) {
 	}
 }
 
+function parseBodyExample(bodyExample) {
+	if (typeof bodyExample !== 'string' || bodyExample.trim() === '') return undefined;
+
+	try {
+		const parsed = JSON.parse(bodyExample);
+		return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 function buildParameter(fieldPrefix, location, parameter) {
 	return {
 		name: parameter.name,
@@ -104,6 +124,43 @@ function buildParameter(fieldPrefix, location, parameter) {
 
 function isSensitiveParameter(name) {
 	return /(?:password|secret|token)/i.test(name);
+}
+
+function isBodyPrimitive(value) {
+	return value === null || ['string', 'number', 'boolean'].includes(typeof value);
+}
+
+function bodyParameterType(value) {
+	if (typeof value === 'number') return 'number';
+	if (typeof value === 'boolean') return 'boolean';
+	return 'string';
+}
+
+function buildBodyParameterName(pathParts) {
+	return camelCase(pathParts.join('-'));
+}
+
+function collectBodyParameters(example, fieldPrefix, pathParts = [], parameters = []) {
+	for (const [name, value] of Object.entries(example)) {
+		const nextPathParts = [...pathParts, name];
+
+		if (isBodyPrimitive(value)) {
+			parameters.push({
+				name,
+				fieldName: `${fieldPrefix}_body_${buildBodyParameterName(nextPathParts)}`,
+				path: nextPathParts,
+				type: bodyParameterType(value),
+				defaultValue: value ?? '',
+			});
+			continue;
+		}
+
+		if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+			collectBodyParameters(value, fieldPrefix, nextPathParts, parameters);
+		}
+	}
+
+	return parameters;
 }
 
 const operations = [];
@@ -128,6 +185,10 @@ for (const [pathname, pathItem] of Object.entries(spec.paths ?? {})) {
 		const parameters = getAllParameters(pathItem, operation);
 		const hasBodyParameter = parameters.some((parameter) => parameter.in === 'body');
 		const bodyExample = getBodyExample(parameters, operation);
+		const bodyParameters =
+			hasBodyParameter && bodyExample !== undefined
+				? collectBodyParameters(parseBodyExample(bodyExample) ?? {}, fieldPrefix)
+				: [];
 		const pathParameters = parameters
 			.filter((parameter) => parameter.in === 'path')
 			.map((parameter) => buildParameter(fieldPrefix, 'path', parameter));
@@ -148,6 +209,8 @@ for (const [pathname, pathItem] of Object.entries(spec.paths ?? {})) {
 			hasAccountIdHeader,
 			pathParameters,
 			queryParameters,
+			bodyCollectionFieldName: bodyParameters.length > 0 ? `${fieldPrefix}_bodyFields` : undefined,
+			bodyParameters,
 			bodyFieldName: hasBodyParameter ? `${fieldPrefix}_body` : undefined,
 			bodyExample: bodyExample ?? '',
 		});
@@ -228,23 +291,49 @@ for (const operation of operations) {
 	}
 
 	if (operation.bodyFieldName !== undefined) {
+		if (operation.bodyParameters.length > 0) {
+			operationFields.push({
+				displayName: 'Body Fields',
+				name: operation.bodyCollectionFieldName,
+				type: 'collection',
+				default: {},
+				placeholder: 'Add Body Field',
+				displayOptions,
+				options: operation.bodyParameters.map((parameter) => {
+					const field = {
+						displayName: humanize(parameter.path.join(' ')),
+						name: parameter.fieldName,
+						type: parameter.type,
+						default: parameter.defaultValue,
+						description: `Request body field: ${parameter.path.join('.')}`,
+					};
+					if (isSensitiveParameter(parameter.path.join('.'))) field.typeOptions = { password: true };
+					return field;
+				}),
+			});
+		}
+
 		operationFields.push({
-			displayName: 'JSON Body',
+			displayName: operation.bodyParameters.length > 0 ? 'Additional JSON Body' : 'JSON Body',
 			name: operation.bodyFieldName,
 			type: 'json',
-			default: operation.bodyExample ?? '',
+			default: operation.bodyParameters.length > 0 ? '' : (operation.bodyExample ?? ''),
 			typeOptions: {
-				rows: 10,
+				rows: operation.bodyParameters.length > 0 ? 5 : 10,
 			},
 			displayOptions,
-			description: 'Request body as JSON',
+			description:
+				operation.bodyParameters.length > 0
+					? 'Additional request body values as JSON, merged with Body Fields'
+					: 'Request body as JSON',
 		});
 	}
 }
 
-const serializableOperations = operations.map(({ action, bodyExample, ...operation }) => {
+const serializableOperations = operations.map(({ action, bodyExample, bodyParameters, ...operation }) => {
 	const result = {
 		...operation,
+		bodyParameters: bodyParameters.map(({ defaultValue, ...parameter }) => parameter),
 	};
 	return result;
 });
@@ -259,6 +348,15 @@ export interface ThreatdownParameter {
 \trequired: boolean;
 }
 
+export type ThreatdownBodyParameterType = 'string' | 'number' | 'boolean';
+
+export interface ThreatdownBodyParameter {
+\tname: string;
+\tfieldName: string;
+\tpath: string[];
+\ttype: ThreatdownBodyParameterType;
+}
+
 export interface ThreatdownOperation {
 \tvalue: string;
 \tresource: string;
@@ -268,6 +366,8 @@ export interface ThreatdownOperation {
 \thasAccountIdHeader: boolean;
 \tpathParameters: ThreatdownParameter[];
 \tqueryParameters: ThreatdownParameter[];
+\tbodyCollectionFieldName?: string;
+\tbodyParameters: ThreatdownBodyParameter[];
 \tbodyFieldName?: string;
 }
 

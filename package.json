@@ -1,6 +1,6 @@
 {
 	"name": "n8n-nodes-threatdown",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "n8n community node for the ThreatDown Nebula API by Malwarebytes",
 	"license": "MIT",
 	"homepage": "https://api.malwarebytes.com",
