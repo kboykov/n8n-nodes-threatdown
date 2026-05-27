@@ -1,0 +1,58 @@
+{
+	"name": "n8n-nodes-threatdown",
+	"version": "0.1.0",
+	"description": "n8n community node for the ThreatDown Nebula API by Malwarebytes",
+	"license": "MIT",
+	"homepage": "https://api.malwarebytes.com",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/kboykov/n8n-nodes-threatdown.git"
+	},
+	"bugs": {
+		"url": "https://github.com/kboykov/n8n-nodes-threatdown/issues"
+	},
+	"keywords": [
+		"n8n-community-node-package",
+		"n8n",
+		"threatdown",
+		"malwarebytes",
+		"security"
+	],
+	"author": {
+		"name": "kboykov",
+		"email": "office@endormo.com"
+	},
+	"scripts": {
+		"build": "n8n-node build",
+		"build:watch": "tsc --watch",
+		"dev": "n8n-node dev",
+		"generate:operations": "node scripts/generate-threatdown-operations.mjs",
+		"lint": "n8n-node lint",
+		"lint:fix": "n8n-node lint --fix",
+		"release": "n8n-node release",
+		"prepublishOnly": "n8n-node prerelease"
+	},
+	"files": [
+		"dist"
+	],
+	"n8n": {
+		"n8nNodesApiVersion": 1,
+		"strict": true,
+		"credentials": [
+			"dist/credentials/ThreatdownMalwarebytesOAuth2Api.credentials.js"
+		],
+		"nodes": [
+			"dist/nodes/Threatdown/ThreatdownMalwarebytes.node.js"
+		]
+	},
+	"devDependencies": {
+		"@n8n/node-cli": "0.32.1",
+		"eslint": "9.29.0",
+		"prettier": "3.6.2",
+		"release-it": "^19.0.4",
+		"typescript": "5.9.2"
+	},
+	"peerDependencies": {
+		"n8n-workflow": "*"
+	}
+}
