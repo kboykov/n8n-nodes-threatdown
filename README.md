@@ -91,6 +91,13 @@ This repository includes GitHub Actions workflows for CI and npm publishing with
 provenance, following n8n's community-node guidance for Creator Portal
 verification.
 
+Before the first publish, configure one of these npm authentication paths:
+
+- Recommended: add a trusted publisher on npmjs.com for
+  `kboykov/n8n-nodes-threatdown` with workflow filename `publish.yml`.
+- Fallback: add a GitHub Actions secret named `NPM_TOKEN` containing an npm
+  automation token with publish access.
+
 To release:
 
 ```bash

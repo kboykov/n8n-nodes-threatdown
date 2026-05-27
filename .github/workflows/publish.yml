@@ -81,8 +81,9 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 'lts/*'
-          cache: 'npm'
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
 
       - name: Install dependencies
         run: 'npm ci'
@@ -94,9 +95,10 @@ jobs:
         # Option A (OIDC): leave NPM_TOKEN unset. The token step is skipped and
         #   npm uses the OIDC exchange instead.
         # Option B (token): set NPM_TOKEN in repo secrets. It is written to
-        #   .npmrc here before publishing.
+        #   .npmrc here before publishing and exposed as NODE_AUTH_TOKEN.
         run: |
           [ -n "$NPM_TOKEN" ] && npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
           npm run release
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
